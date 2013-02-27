@@ -1,6 +1,8 @@
 import java.util.*;
 import java.util.concurrent.*;
 
+import javax.activity.InvalidActivityException;
+
 public class ResourcePool<R> {
 	private class Resource{
 		public boolean IsAcquired=false;
@@ -10,9 +12,9 @@ public class ResourcePool<R> {
 		}
 	}
 	
-	private List<Integer> availableResourceIndexList = new CopyOnWriteArrayList<Integer>();
-	private ConcurrentMap<Integer,Resource> resourceMap = new ConcurrentHashMap<Integer,Resource>();
-	private ConcurrentMap<R,Integer> acquiredResourceMap = new ConcurrentHashMap<R,Integer>();
+	private List<UUID> availableResourceIndexList = new CopyOnWriteArrayList<UUID>();
+	private ConcurrentMap<UUID,Resource> resourceMap = new ConcurrentHashMap<UUID,Resource>();
+	private ConcurrentMap<R,UUID> acquiredResourceMap = new ConcurrentHashMap<R,UUID>();
 	
 	public ResourcePool(){
 	}
@@ -27,6 +29,7 @@ public class ResourcePool<R> {
 	}
 	
 	public void close(){
+		closeNow();
 	}
 	
 	public void closeNow(){
@@ -38,8 +41,8 @@ public class ResourcePool<R> {
 		if(!_isOpen)return false;
 		Resource container = new Resource(resource);
 		//there's a race condition here, really really tiny race condition that I can't block without doing something silly
-		int index = resourceMap.size();
-		resourceMap.put(index,container);
+		UUID index = UUID.randomUUID();
+		resourceMap.put(index ,container);
 		availableResourceIndexList.add(index);
 		return true;
 	}
@@ -53,9 +56,11 @@ public class ResourcePool<R> {
 		return true;
 	}
 	
-	public R acquire(){
+	public R acquire() throws InvalidActivityException{
+		if(!_isOpen)throw new InvalidActivityException("Cannot acquire from a closed ResourcePool");
+		if(resourceMap.size()==0)return null;
 		//this could also be tightened
-		int index=availableResourceIndexList.get(0);
+		UUID index=availableResourceIndexList.get(0);
 		availableResourceIndexList.remove((Object)index);
 		Resource activeResource = resourceMap.get(index);
 		activeResource.IsAcquired=true;
@@ -68,7 +73,9 @@ public class ResourcePool<R> {
 	}
 	
 	public void release(R resource){
-		int index = acquiredResourceMap.get(resource);
-		
+		UUID index = acquiredResourceMap.get(resource);
+		Resource activeResource= resourceMap.get(index);
+		activeResource.IsAcquired=false;
+		acquiredResourceMap.remove(resource);
 	}
 }
