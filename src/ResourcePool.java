@@ -1,20 +1,24 @@
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ForkJoinPool.ManagedBlocker;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.TimeUnit;
 
 import javax.activity.InvalidActivityException;
 
+import org.omg.CORBA.DynAnyPackage.Invalid;
+
 public class ResourcePool<R> {
-	private class Resource{
-		public boolean IsAcquired=false;
-		public R Resource;
-		public Resource(R resource){
-			Resource=resource;
-		}
-	}
+
 	
-	private List<UUID> availableResourceIndexList = new CopyOnWriteArrayList<UUID>();
-	private ConcurrentMap<UUID,Resource> resourceMap = new ConcurrentHashMap<UUID,Resource>();
-	private ConcurrentMap<R,UUID> acquiredResourceMap = new ConcurrentHashMap<R,UUID>();
+	private BlockingQueue<R> availableResourceQueue = new LinkedBlockingQueue<R>();
+	private ConcurrentMap<Integer,R> acquiredResourceMap = new ConcurrentHashMap<Integer,R>();
+	private Set<Integer> ManagedIds = new TreeSet<Integer>(); 
 	
 	public ResourcePool(){
 	}
@@ -29,6 +33,7 @@ public class ResourcePool<R> {
 	}
 	
 	public void close(){
+		while(!acquiredResourceMap.isEmpty());
 		closeNow();
 	}
 	
@@ -36,46 +41,83 @@ public class ResourcePool<R> {
 		_isOpen=false;
 	}
 	
-	public boolean add(R resource)
+	public boolean add(R resource) throws InterruptedException
 	{
-		if(!_isOpen)return false;
-		Resource container = new Resource(resource);
-		//there's a race condition here, really really tiny race condition that I can't block without doing something silly
-		UUID index = UUID.randomUUID();
-		resourceMap.put(index ,container);
-		availableResourceIndexList.add(index);
+		int index = System.identityHashCode(resource);
+		synchronized (ManagedIds) {
+			if(ManagedIds.contains(index))
+				return false;
+			else
+				ManagedIds.add(index);
+		}
+		availableResourceQueue.put(resource);
 		return true;
 	}
 	
-	boolean remove(R resource){
-		removeNow(resource);
+	public boolean remove(R resource){
+		int index = System.identityHashCode(resource);
+		while(acquiredResourceMap.containsKey(index));
+		return removeNow(resource, index);
+	}
+	
+	public boolean removeNow(R resource){
+		int index = System.identityHashCode(resource);
+		return removeNow(resource, index);
+	}
+	
+	private boolean removeNow(R resource, int index){
+		synchronized(ManagedIds){
+			BlockingQueue<R>  resultQueue= new PriorityBlockingQueue<R>();
+			R tmpResource;
+			if(!ManagedIds.remove(index))
+				return false;
+		
+			synchronized (availableResourceQueue) {
+				while(!availableResourceQueue.isEmpty())
+				{
+					tmpResource=availableResourceQueue.remove();
+					if(tmpResource!=resource)
+						resultQueue.add(tmpResource);
+				}
+				availableResourceQueue=resultQueue;
+			}
+		}
 		return true;
 	}
 	
-	boolean removeNow(R resource){
-		return true;
+	public R acquire() throws InvalidActivityException, InterruptedException{
+		if(!isOpen())throw new InvalidActivityException("The ResourcePool is closed. You cannot acquire from a closed ResourcePool");
+		R result ;
+		result= availableResourceQueue.take();
+
+		acquiredResourceMap.put(System.identityHashCode(result),result);
+		return result;
 	}
 	
-	public R acquire() throws InvalidActivityException{
-		if(!_isOpen)throw new InvalidActivityException("Cannot acquire from a closed ResourcePool");
-		if(resourceMap.size()==0)return null;
-		//this could also be tightened
-		UUID index=availableResourceIndexList.get(0);
-		availableResourceIndexList.remove((Object)index);
-		Resource activeResource = resourceMap.get(index);
-		activeResource.IsAcquired=true;
-		acquiredResourceMap.put(activeResource.Resource, index);
-		return activeResource.Resource;
+	public R acquire(long timeout,	TimeUnit unit) throws InvalidActivityException, InterruptedException{
+		if(!isOpen())throw new InvalidActivityException("The ResourcePool is closed. You cannot acquire from a closed ResourcePool");
+		R result ;
+		
+		try {
+			result= availableResourceQueue.poll(timeout,unit);
+		} catch (InterruptedException e) {
+			throw e;
+		}
+		if(result==null)return null;
+		
+		acquiredResourceMap.put(System.identityHashCode(result),result);
+		
+		return result;
 	}
 	
-	public R acquire(long timeout,	java.util.concurrent.TimeUnit unit){
-		return null;
-	}
+	public void release(R resource) throws InvalidActivityException{
+		int index = System.identityHashCode(resource);
+		
+		if(acquiredResourceMap.containsKey(index))
+			acquiredResourceMap.remove(index);
+		else
+			throw new InvalidActivityException("The ResourcePool has not been used to acquire the specified resource.  You can only release resources that were acquired through the pool");
 	
-	public void release(R resource){
-		UUID index = acquiredResourceMap.get(resource);
-		Resource activeResource= resourceMap.get(index);
-		activeResource.IsAcquired=false;
-		acquiredResourceMap.remove(resource);
+		availableResourceQueue.add(resource);
 	}
 }

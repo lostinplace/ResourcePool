@@ -1,0 +1,15 @@
+Requirements
+
+• Resources may be released at any time
+
+• Resources may be added or removed at any time
+
+Each method taken in isolation may be thread-safe, but that does not imply that the resource pool as a whole is thread-safe. Consider edge cases in 
+which two threads are calling different methods simultaneously with the same resource, such as release(R)/remove(R) or acquire(R)/remove(R). 
+Are there any race conditions that may lead to inconsistencies?
+
+• If the pool allows the same resource to be added or released twice then it may be possible for two threads to acquire the same resource later
+
+• Appropriate choice of data structures is important and can make certain parts of the implementation much simpler
+
+• Do not create a class called R to represent the resource. Use generics!

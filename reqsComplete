@@ -1,0 +1,58 @@
+NOTEST - ResourcePool<R> manages objects of type R
+
+ResourcePoolCanAdd - resources may be added to the pool
+
+ResourcesCanBeCheckedOut - resources may be checked out
+
+CheckedOutResourcesCanBeCheckedIn - resources that are checked out may be checked in
+
+ResourcesMayBeRemoved - resources may be removed
+
+ResourcePool - must implement the following methods
+
+void open()
+boolean isOpen()
+void close()
+void closeNow()
+boolean add(R resource)
+boolean remove(R resource)
+boolean removeNow(R resource)
+R acquire()
+R acquire(long timeout, java.util.concurrent.TimeUnit unit)
+void release(R resource)
+
+NoAcquireUnlessOpen - The pool shall not allow any resource to be acquired unless the pool is open
+
+AcquireBlocksUntilResourceAvailable(ThreadingTests) - The acquire() method must block until a resource is available, unless the 
+pool is closed, in which case a null should be returned or an exception thrown immediately
+
+AcquireReturnsNullOnTimeout(ThreadingTests) - If a resource cannot be acquired within the timeout interval specified in the
+ acquire(long, TimeUnit) method, either a null may be returned or an exception may be thrown
+
+AddReportsFalseOnDuplicates(BasicTests) - The add(R) method returns true if the given resource was not previously managed by the pool 
+or false if the given resource was already managed by the pool. If a resource r has not yet been added to the pool, then calling add(r) 
+twice will return true the first time and false the second time.
+
+RemoveReportsFalseForUnmanaged(BasicTests) - The remove(R) method returns true if the given resource was removed from the pool or false 
+if the given resource was not managed by the pool. If a resource r has been added to the pool, then calling remove(r) twice will return true 
+the first time and false the second time.
+
+RemoveBlocksUntilResourceNotInUse(ThreadingTests) - When remove(R) is called, if the given resource is already in use, the method must block 
+until the resource is no longer in use
+
+RemoveNowDoesntWait(ThreadingTests) - The method removeNow(R) removes the given resource immediately without waiting for it to be released. 
+The return value has the same meaning as remove(R).
+
+CloseBlocksUntilAllResourcesReleased(ThreadingTests) - The close() method should block until all acquired resources have been released
+
+CloseNowDoesntWait(ThreadingTests) - The method closeNow() closes the pool immediately without waiting for all acquired resources to be released
+
+CanOnlyReleaseAcquiredResources(BasicTests) - The release() method returns an acquired resource to the pool, but only if that resource is still 
+managed by the pool (i.e. has not been removed)
+
+
+
+
+
+
+
