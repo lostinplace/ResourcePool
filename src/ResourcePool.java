@@ -60,26 +60,22 @@ public class ResourcePool<R> {
 		return removeNow(resource, index);
 	}
 	
-	public boolean removeNow(R resource){
+	public boolean removeNow(R resource) throws InvalidActivityException{
 		int index = System.identityHashCode(resource);
+		synchronized(acquiredResourceMap){
+			if(acquiredResourceMap.containsKey(index))
+				release(resource);
+		}
 		return removeNow(resource, index);
 	}
 	
 	private boolean removeNow(R resource, int index){
 		synchronized(ManagedIds){
-			BlockingQueue<R>  resultQueue= new PriorityBlockingQueue<R>();
-			R tmpResource;
 			if(!ManagedIds.remove(index))
 				return false;
-		
+			
 			synchronized (availableResourceQueue) {
-				while(!availableResourceQueue.isEmpty())
-				{
-					tmpResource=availableResourceQueue.remove();
-					if(tmpResource!=resource)
-						resultQueue.add(tmpResource);
-				}
-				availableResourceQueue=resultQueue;
+				availableResourceQueue.remove(resource);
 			}
 		}
 		return true;
