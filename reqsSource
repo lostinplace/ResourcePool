@@ -11,5 +11,3 @@ Are there any race conditions that may lead to inconsistencies?
 • If the pool allows the same resource to be added or released twice then it may be possible for two threads to acquire the same resource later
 
 • Appropriate choice of data structures is important and can make certain parts of the implementation much simpler
-
-• Do not create a class called R to represent the resource. Use generics!
